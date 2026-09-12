@@ -1,5 +1,14 @@
-import type { FacilitiesFC, GraphStats, LngLat, OriginChoice, RoadsFC, ContextData, SnapResult } from './types';
-import type { SolvePayload, WorkerRes } from './workerProtocol';
+import type {
+  Calendar,
+  ContextData,
+  FacilitiesFC,
+  GraphStats,
+  LngLat,
+  OriginChoice,
+  RoadsFC,
+  SnapResult
+} from './types';
+import type { SolvePayload, SolveTdPayload, ViaSpec, WorkerRes } from './workerProtocol';
 
 /** 主线程侧的 Worker 客户端：Promise 化的请求/响应配对 */
 export class SolverClient {
@@ -27,8 +36,12 @@ export class SolverClient {
     });
   }
 
-  load(roads: RoadsFC, context: ContextData): Promise<{ stats: GraphStats; isolatedLines: LngLat[][] }> {
-    return this.call({ type: 'load', roads, context });
+  load(
+    roads: RoadsFC,
+    context: ContextData,
+    calendar: Calendar
+  ): Promise<{ stats: GraphStats; isolatedLines: LngLat[][]; tdErrors: string[]; tdEdges: number }> {
+    return this.call({ type: 'load', roads, context, calendar });
   }
 
   snap(point: LngLat): Promise<{ result: SnapResult }> {
@@ -42,6 +55,17 @@ export class SolverClient {
     facilities: FacilitiesFC
   ): Promise<SolvePayload> {
     return this.call({ type: 'solve', origin, speedMps, maxMinutes, facilities });
+  }
+
+  solveTd(
+    origin: OriginChoice,
+    via: ViaSpec | null,
+    departureMin: number,
+    speedMps: number,
+    maxMinutes: number,
+    facilities: FacilitiesFC
+  ): Promise<SolveTdPayload> {
+    return this.call({ type: 'solveTd', origin, via, departureMin, speedMps, maxMinutes, facilities });
   }
 
   terminate() {

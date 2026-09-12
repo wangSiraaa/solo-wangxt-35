@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test:smoke": "esbuild scripts/smoke.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/smoke.cjs && node node_modules/.cache/smoke.cjs"
+    "test:smoke": "esbuild scripts/smoke.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/smoke.cjs && node node_modules/.cache/smoke.cjs",
+    "verify:td": "esbuild scripts/verify-td.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/verify-td.cjs && node node_modules/.cache/verify-td.cjs"
   },
   "dependencies": {
     "graphology": "^0.25.4",

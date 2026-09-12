@@ -13,6 +13,8 @@ export interface EdgeRec {
   coords: LngLat[];
   nodeA: string;
   nodeB: string;
+  /** 原始 schedule 属性（未解析），由 td.ts 校验与解析 */
+  scheduleRaw?: unknown;
 }
 
 export interface BuiltNetwork {
@@ -101,7 +103,7 @@ export function buildNetwork(roads: RoadsFC): BuiltNetwork {
         const seg = coords.slice(segStart, i + 1);
         if (seg.length >= 2) {
           const id = `e${seq++}`;
-          edges.set(id, {
+          const rec: EdgeRec = {
             id,
             name: String(props.name ?? `路段 ${id}`),
             highway,
@@ -112,7 +114,9 @@ export function buildNetwork(roads: RoadsFC): BuiltNetwork {
             coords: seg,
             nodeA: keyOf(seg[0]!),
             nodeB: keyOf(seg[seg.length - 1]!)
-          });
+          };
+          if (props.schedule !== undefined) rec.scheduleRaw = props.schedule;
+          edges.set(id, rec);
         }
         segStart = i;
       }

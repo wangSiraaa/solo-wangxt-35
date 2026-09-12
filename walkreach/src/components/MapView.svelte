@@ -10,16 +10,21 @@
     facilitiesFC,
     facilitiesView,
     isolatedLines,
+    isoWaits,
     isochrone,
+    isochrone2,
     origin,
     pendingSnap,
     roads,
+    selectedFacility,
     selectedFacilityId,
-    selectedPath
+    selectedPath,
+    via
   } from '../lib/stores';
   import { requestSnap } from '../lib/controller';
   import { bboxOfLines } from '../lib/geo';
-  import { STATUS_TEXT, type LngLat } from '../lib/types';
+  import { fmtClock } from '../lib/td';
+  import { STATUS_TEXT, type LngLat, type WaitEvent } from '../lib/types';
 
   let container: HTMLDivElement;
   let map: maplibregl.Map;
@@ -66,6 +71,46 @@
       properties: {}
     };
     return { type: 'FeatureCollection', features: [link, pt] };
+  }
+
+  function viaFC(): FeatureCollection {
+    const v = get(via);
+    if (!v) return EMPTY;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: [v.point, v.proj] },
+          properties: {}
+        },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: v.point }, properties: {} }
+      ]
+    };
+  }
+
+  function waitsFC(): FeatureCollection {
+    return {
+      type: 'FeatureCollection',
+      features: get(isoWaits).map((w) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: w.at },
+        properties: { waitMin: w.waitMin, label: w.label, clock: fmtClock(w.clockMin) }
+      }))
+    };
+  }
+
+  function pathWaitsFC(): FeatureCollection {
+    const sel = get(selectedFacility);
+    const waits: WaitEvent[] = sel?.result?.waits ?? [];
+    return {
+      type: 'FeatureCollection',
+      features: waits.map((w) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: w.at },
+        properties: { waitMin: w.waitMin, kind: w.kind, label: w.label, clock: fmtClock(w.clockMin) }
+      }))
+    };
   }
 
   function snapFC(): FeatureCollection {
@@ -126,8 +171,10 @@
     if (!v) return '';
     const r = v.result;
     const status = r ? STATUS_TEXT[r.status] : '未求解';
-    const time = r?.timeMin !== undefined ? `<br/>步行约 <b>${r.timeMin}</b> 分钟（${r.distanceM} 米）` : '';
-    return `<div class="popup"><b>${esc(v.name)}</b> <span class="cat">${esc(v.category)}</span><br/>状态：${esc(status)}${time}</div>`;
+    const time = r?.timeMin !== undefined ? `<br/>步行约 <b>${r.timeMin}</b> 分钟` : '';
+    const clock = r?.arrivalMin !== undefined ? `（${fmtClock(r.arrivalMin)} 到达）` : '';
+    const wait = r?.waitMin ? `<br/>途中等待 ${r.waitMin.toFixed(1)} 分钟` : '';
+    return `<div class="popup"><b>${esc(v.name)}</b> <span class="cat">${esc(v.category)}</span><br/>状态：${esc(status)}${time}${clock}${wait}</div>`;
   }
 
   onMount(() => {
@@ -153,10 +200,14 @@
         'isolated',
         'roads',
         'isochrone',
+        'iso2',
         'path',
         'facilities',
         'selected-facility',
         'origin',
+        'via',
+        'waits',
+        'path-waits',
         'snap'
       ]) {
         map.addSource(id, { type: 'geojson', data: EMPTY });
@@ -228,6 +279,29 @@
           'line-blur': 0.4
         }
       });
+      // 第二段等时圈（接送点出发）：紫色调区分
+      map.addLayer({
+        id: 'iso2',
+        type: 'line',
+        source: 'iso2',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': [
+            'match',
+            ['get', 'band'],
+            0,
+            '#7b5ea7',
+            1,
+            '#9e8cc9',
+            2,
+            '#c3b5e0',
+            '#e0d6f2'
+          ],
+          'line-width': 5,
+          'line-opacity': 0.75,
+          'line-blur': 0.4
+        }
+      });
       map.addLayer({
         id: 'path',
         type: 'line',
@@ -294,6 +368,51 @@
         }
       });
       map.addLayer({
+        id: 'via-link',
+        type: 'line',
+        source: 'via',
+        filter: ['==', ['geometry-type'], 'LineString'],
+        paint: { 'line-color': '#7b3294', 'line-width': 1.5, 'line-dasharray': [2, 2] }
+      });
+      map.addLayer({
+        id: 'via-point',
+        type: 'circle',
+        source: 'via',
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#7b3294',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2.5
+        }
+      });
+      // 网络上发生等待的位置（等时圈层面）
+      map.addLayer({
+        id: 'waits',
+        type: 'circle',
+        source: 'waits',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['get', 'waitMin'], 0, 4, 10, 9],
+          'circle-color': '#f4a582',
+          'circle-stroke-color': '#b35806',
+          'circle-stroke-width': 1.5,
+          'circle-opacity': 0.9
+        }
+      });
+      // 当前选中设施路径上的等待（含接送点停留）
+      map.addLayer({
+        id: 'path-waits',
+        type: 'circle',
+        source: 'path-waits',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['get', 'waitMin'], 0, 6, 10, 12],
+          'circle-color': ['match', ['get', 'kind'], 'dwell', '#7b3294', '#e08214'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-opacity': 0.95
+        }
+      });
+      map.addLayer({
         id: 'snap-links',
         type: 'line',
         source: 'snap',
@@ -337,15 +456,19 @@
       setData('boundary', get(context).boundary ?? EMPTY);
       setData('isolated', isolatedFC());
       setData('isochrone', get(isochrone));
+      setData('iso2', get(isochrone2));
       setData('facilities', get(facilitiesFC));
       setData('origin', originFC());
+      setData('via', viaFC());
+      setData('waits', waitsFC());
       fitToRoads();
     });
 
     // ---- 交互 ----
     map.on('click', (e) => {
-      if (get(clickMode) === 'origin') {
-        void requestSnap([e.lngLat.lng, e.lngLat.lat]);
+      const mode = get(clickMode);
+      if (mode === 'origin' || mode === 'via') {
+        void requestSnap([e.lngLat.lng, e.lngLat.lat], false, mode);
       }
     });
     map.on('click', 'facilities', (e) => {
@@ -361,6 +484,14 @@
     });
     map.on('mouseenter', 'facilities', () => (map.getCanvas().style.cursor = 'pointer'));
     map.on('mouseleave', 'facilities', () => (map.getCanvas().style.cursor = ''));
+    map.on('click', 'waits', (e) => {
+      const p = e.features?.[0]?.properties;
+      if (!p) return;
+      new maplibregl.Popup({ closeButton: true, maxWidth: '240px' })
+        .setLngLat(e.lngLat)
+        .setHTML(`<div class="popup">在此等待约 <b>${Number(p.waitMin).toFixed(1)}</b> 分钟<br/>${esc(String(p.label))} · ${esc(String(p.clock))} 起</div>`)
+        .addTo(map);
+    });
 
     // ---- 订阅 store → 更新数据源 ----
     unsubs = [
@@ -374,14 +505,23 @@
       }),
       isolatedLines.subscribe(() => setData('isolated', isolatedFC())),
       isochrone.subscribe((fc) => setData('isochrone', fc)),
+      isochrone2.subscribe((fc) => setData('iso2', fc)),
       facilitiesFC.subscribe((fc) => setData('facilities', fc)),
       selectedPath.subscribe((fc) => setData('path', fc)),
       origin.subscribe(() => setData('origin', originFC())),
+      via.subscribe(() => setData('via', viaFC())),
+      isoWaits.subscribe(() => setData('waits', waitsFC())),
       pendingSnap.subscribe(() => setData('snap', snapFC())),
-      selectedFacilityId.subscribe(() => setData('selected-facility', selectedFC())),
-      facilitiesView.subscribe(() => setData('selected-facility', selectedFC())),
+      selectedFacilityId.subscribe(() => {
+        setData('selected-facility', selectedFC());
+        setData('path-waits', pathWaitsFC());
+      }),
+      facilitiesView.subscribe(() => {
+        setData('selected-facility', selectedFC());
+        setData('path-waits', pathWaitsFC());
+      }),
       clickMode.subscribe((m) => {
-        if (map) map.getCanvas().style.cursor = m === 'origin' ? 'crosshair' : '';
+        if (map) map.getCanvas().style.cursor = m !== 'inspect' ? 'crosshair' : '';
       })
     ];
   });

@@ -1,11 +1,18 @@
 import type { Feature, FeatureCollection, LineString, Point, Polygon } from 'geojson';
-import type { ContextData, FacilitiesFC, FacilityProps, LngLat, RoadsFC, RoadProps } from './types';
+import type { Calendar, ContextData, FacilitiesFC, FacilityProps, LngLat, RoadsFC, RoadProps } from './types';
 
 /**
  * 演示数据：一座被河流分成两岸的小镇。
  * 完全本地生成，不需要任何外部地图服务或密钥。
  * 包含：单行街、台阶小径（禁行）、与主网断开的小巷、
  * 数据范围边界，以及落在范围外/离路网太远的设施（用于演示“无法判定”而非“不可达”）。
+ *
+ * 上学时段（时刻模式）：
+ * - 永安桥工作日 07:31–07:36 临时封闭、07:45–08:30 早高峰管制（可等待）；
+ * - 北二街天桥工作日 07:00–07:51、15:30–16:30 定时开放；
+ * 默认 07:30 出发：第一段在永安桥前短暂等待，第二段刚好赶上天桥关闭前通过；
+ * 稍晚出发则错过天桥，回程又遇永安桥管制，只能绕青山桥——
+ * 演示 FIFO 等待、等待优于绕路，以及第一段延误影响第二段。
  */
 
 const LNG0 = 120.0;
@@ -44,13 +51,24 @@ function buildRoads(): RoadsFC {
     features.push(road(west, { name, highway: 'residential', oneway }));
 
     if (BRIDGES[y]) {
+      const bridgeProps: RoadProps = { name: BRIDGES[y]!, highway: 'residential', oneway, bridge: 'yes' };
+      if (y === 1) {
+        // 永安桥：工作日 07:31–07:36 临时封闭、07:55–08:30 早高峰管制（均可等待，FIFO）
+        bridgeProps.schedule = {
+          mode: 'closed-during',
+          windows: [
+            { days: [1, 2, 3, 4, 5], open: '07:31', close: '07:36' },
+            { days: [1, 2, 3, 4, 5], open: '07:45', close: '08:30' }
+          ]
+        };
+      }
       features.push(
         road(
           [
             [bankW(y), LAT0 + y * DY],
             [bankE(y), LAT0 + y * DY]
           ],
-          { name: BRIDGES[y]!, highway: 'residential', oneway, bridge: 'yes' }
+          bridgeProps
         )
       );
     }
@@ -65,6 +83,29 @@ function buildRoads(): RoadsFC {
     for (let y = 0; y <= N; y++) coords.push(pt(x, y));
     features.push(road(coords, { name: V_NAMES[x]!, highway: 'residential', oneway: 'no' }));
   }
+
+  // 定时过街通道：北二街天桥，工作日 07:00–07:51、15:30–16:30 开放
+  features.push(
+    road(
+      [
+        [bankW(3), LAT0 + 3 * DY],
+        [bankE(3), LAT0 + 3 * DY]
+      ],
+      {
+        name: '北二街天桥',
+        highway: 'footway',
+        oneway: 'no',
+        bridge: 'yes',
+        schedule: {
+          mode: 'open-only',
+          windows: [
+            { days: [1, 2, 3, 4, 5], open: '07:00', close: '07:51' },
+            { days: [1, 2, 3, 4, 5], open: '15:30', close: '16:30' }
+          ]
+        }
+      }
+    )
+  );
 
   // 台阶小径：连接解放路东侧的口袋绿地（台阶禁行 → 该绿地仅台阶可达）
   const pocket: LngLat = pt(1.5, 2.5);
@@ -155,7 +196,10 @@ export interface DemoData {
   roads: RoadsFC;
   facilities: FacilitiesFC;
   context: ContextData;
+  calendar: Calendar;
   defaultOrigin: LngLat;
+  defaultVia: LngLat;
+  defaultDepartureMin: number;
 }
 
 export function makeDemoData(): DemoData {
@@ -163,6 +207,9 @@ export function makeDemoData(): DemoData {
     roads: buildRoads(),
     facilities: buildFacilities(),
     context: buildContext(),
-    defaultOrigin: pt(1.1, 1.1)
+    calendar: { timezone: 'Asia/Shanghai', date: '2026-09-11' },
+    defaultOrigin: pt(1.1, 1.05),
+    defaultVia: pt(3, 1.05), // 接送点：建设路北段（永安桥东）
+    defaultDepartureMin: 450 // 07:30
   };
 }

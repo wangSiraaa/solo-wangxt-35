@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { facilitiesView, selectedFacility, selectedFacilityId } from '../lib/stores';
+  import { facilitiesView, selectedFacility, selectedFacilityId, settings } from '../lib/stores';
+  import { fmtClock } from '../lib/td';
   import { STATUS_TEXT, type ReachStatus } from '../lib/types';
 
   const CHIP_COLORS: Record<ReachStatus | 'none', string> = {
@@ -9,16 +10,18 @@
     'stairs-only': '#7b3294',
     'data-gap': '#9e9e9e',
     'outside-extent': '#542788',
+    'via-unreachable': '#c2185b',
     none: '#2b83ba'
   };
 
   const EXPLAIN: Record<ReachStatus, string> = {
     ok: '沿路网步行可达。',
-    'beyond-time': '路网连通，但最短步行时间超出当前时间上限。可尝试提高步速或放宽时间上限。',
+    'beyond-time': '路网连通，但最短步行时间超出当前时间上限。可尝试提高步速、放宽时间上限或提前出发。',
     disconnected: '设施所在路段与起点不在同一连通分量（路网断开、河流阻隔或单行道限制），在现有路网上确定不可达。',
     'stairs-only': '与起点之间仅有台阶相连；台阶已按禁行处理，因此不可达。',
     'data-gap': '距最近可通行道路超过 100 米，周边可能缺少道路数据。这不是确定不可达，需补充数据后再判断。',
-    'outside-extent': '位于数据范围之外，缺少该区域的路网数据，不能解释为不可达。'
+    'outside-extent': '位于数据范围之外，缺少该区域的路网数据，不能解释为不可达。',
+    'via-unreachable': '必经接送点在当前时界内不可达，第二段行程无从谈起。'
   };
 
   function chipLabel(status: ReachStatus | 'none'): string {
@@ -43,7 +46,11 @@
           <span class="name">{f.name}</span>
           <span class="cat">{f.category}</span>
           <span class="time">
-            {#if f.result?.timeMin !== undefined}{f.result.timeMin}′{/if}
+            {#if $settings.timeMode && f.result?.arrivalMin !== undefined}
+              {fmtClock(f.result.arrivalMin)}
+            {:else if f.result?.timeMin !== undefined}
+              {f.result.timeMin}′
+            {/if}
           </span>
         </button>
       </li>
@@ -58,7 +65,21 @@
         {@const r = sel.result}
         <p><b>{chipLabel(r.status)}</b></p>
         {#if r.timeMin !== undefined}
-          <p>步行时间约 <b>{r.timeMin}</b> 分钟，沿路网约 {r.distanceM} 米（粉色线为路径）。</p>
+          <p>
+            全程约 <b>{r.timeMin}</b> 分钟{#if r.arrivalMin !== undefined}，<b>{fmtClock(r.arrivalMin)}</b> 到达{/if}（粉色线为路径）。
+          </p>
+        {/if}
+        {#if r.waitMin}
+          <p>途中等待合计 {r.waitMin.toFixed(1)} 分钟。</p>
+        {/if}
+        {#if r.waits && r.waits.length > 0}
+          <ul class="waits">
+            {#each r.waits as w}
+              <li>
+                {fmtClock(w.clockMin)} 起在「{w.label}」{w.kind === 'dwell' ? '停留' : '等待'} {w.waitMin.toFixed(1)} 分钟
+              </li>
+            {/each}
+          </ul>
         {/if}
         {#if r.snapDistM !== undefined}
           <p>设施到路网的吸附距离 {r.snapDistM} 米。</p>
@@ -142,6 +163,11 @@
   }
   .detail p {
     margin: 4px 0;
+  }
+  .waits {
+    margin: 4px 0;
+    padding-left: 18px;
+    color: #8a5a00;
   }
   .explain {
     color: #5a6a58;

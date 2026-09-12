@@ -1,6 +1,12 @@
 <script lang="ts">
   import { scenarios } from '../lib/stores';
-  import { loadScenarioById, removeScenario, saveCurrentScenario } from '../lib/controller';
+  import {
+    exportScenarioJson,
+    importScenarioJson,
+    loadScenarioById,
+    removeScenario,
+    saveCurrentScenario
+  } from '../lib/controller';
 
   let name = '';
 
@@ -12,6 +18,13 @@
   function fmt(ts: number): string {
     return new Date(ts).toLocaleString('zh-CN', { hour12: false });
   }
+
+  async function onImport(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) await importScenarioJson(file);
+  }
 </script>
 
 <section class="panel">
@@ -19,6 +32,10 @@
   <div class="save-row">
     <input placeholder="场景名称" bind:value={name} />
     <button class="primary" on:click={save}>保存</button>
+  </div>
+  <div class="save-row io">
+    <button on:click={() => exportScenarioJson()}>导出 JSON（含时区与日历）</button>
+    <label class="import-label">导入 JSON<input type="file" accept=".json" on:change={onImport} /></label>
   </div>
   {#if $scenarios.length === 0}
     <p class="hint">暂无已保存场景。</p>
@@ -54,6 +71,9 @@
     display: flex;
     gap: 6px;
   }
+  .save-row.io {
+    margin-top: 6px;
+  }
   .save-row input {
     flex: 1;
     font: inherit;
@@ -75,6 +95,19 @@
     background: #2f6f4f;
     border-color: #2f6f4f;
     color: #fff;
+  }
+  .import-label {
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid #b9c4b4;
+    background: #f6f8f4;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+  }
+  .import-label input {
+    display: none;
   }
   .list {
     list-style: none;

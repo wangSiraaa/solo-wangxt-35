@@ -1,6 +1,7 @@
 import { derived, writable } from 'svelte/store';
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import type {
+  Calendar,
   ContextData,
   FacilitiesFC,
   FacilityResult,
@@ -16,20 +17,42 @@ import type {
 export const roads = writable<RoadsFC | null>(null);
 export const facilities = writable<FacilitiesFC | null>(null);
 export const context = writable<ContextData>({ water: null, boundary: null, boundaryApprox: false });
-export const settings = writable<Settings>({ speedKmh: 5, maxMinutes: 15 });
+export const calendar = writable<Calendar>({ timezone: 'Asia/Shanghai', date: '2026-09-11' });
+export const settings = writable<Settings>({
+  speedKmh: 5,
+  maxMinutes: 22,
+  timeMode: true,
+  departureMin: 450,
+  viaDwellMin: 5
+});
 
 export const graphStats = writable<GraphStats | null>(null);
 export const isolatedLines = writable<LngLat[][]>([]);
+/** 时变数据 FIFO 校验错误；非空时禁止时刻模式求解 */
+export const tdErrors = writable<string[]>([]);
+export const tdEdgeCount = writable<number>(0);
 
 export const origin = writable<OriginChoice | null>(null);
+/** 必经接送点（已确认的吸附选择） */
+export const via = writable<OriginChoice | null>(null);
 /** 点击地图后待确认的吸附候选 */
 export const pendingSnap = writable<SnapResult | null>(null);
-export const clickMode = writable<'origin' | 'inspect'>('inspect');
+/** 当前吸附的目的：设起点还是设接送点 */
+export const snapPurpose = writable<'origin' | 'via'>('origin');
+export const clickMode = writable<'origin' | 'via' | 'inspect'>('inspect');
 
 export const isochrone = writable<FeatureCollection<LineString>>({
   type: 'FeatureCollection',
   features: []
 });
+/** 时刻模式第二段等时圈（从接送点出发） */
+export const isochrone2 = writable<FeatureCollection<LineString>>({
+  type: 'FeatureCollection',
+  features: []
+});
+/** 网络上发生等待的位置 */
+export const isoWaits = writable<{ at: LngLat; waitMin: number; label: string; clockMin: number }[]>([]);
+export const viaInfo = writable<{ arrivalMin: number; departMin: number } | null>(null);
 export const facilityResults = writable<FacilityResult[]>([]);
 export const solveMs = writable<number>(0);
 export const solving = writable(false);

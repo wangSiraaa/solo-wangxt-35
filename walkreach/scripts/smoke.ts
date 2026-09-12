@@ -34,8 +34,8 @@ console.log('\n== 起点吸附 ==');
 console.log('best:', snap.best?.edgeId, snap.best?.name, snap.best?.distM.toFixed(1) + 'm');
 if (!snap.best) throw new Error('起点吸附失败');
 
-// 河对岸吸附测试：点击落在河面上，两侧候选都应被标记为穿屏障，best 应为空
-const riverTest: LngLat = [120.0 + 2.44 * 0.0026, 30.0 + 3 * 0.00225];
+// 河对岸吸附测试：点击落在河面上（避开天桥的河段），两侧候选都应穿屏障，best 应为空
+const riverTest: LngLat = [120.0 + 2.55 * 0.0026, 30.0 + 2.5 * 0.00225];
 const snapRiver = snapToNetwork(riverTest, net.edges, barriers);
 console.log('\n== 河边吸附候选（前3）==');
 for (const c of snapRiver.candidates.slice(0, 3)) {
